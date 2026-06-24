@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
+/** 城市旅游画像工具，为 Agent 提供目的地的基础旅行建议。 */
 @Component
 public class CityProfileTools {
 
@@ -21,6 +22,7 @@ public class CityProfileTools {
             concurrencySafe = true)
     public String getCityProfile(
             @ToolParam(name = "city", description = "目的地城市中文名") String city) {
+        // 当前使用内置城市画像；未知城市返回通用建议，保证 Agent 始终有结构化参考。
         Map<String, Object> profile = new LinkedHashMap<>();
         profile.put("city", city);
 

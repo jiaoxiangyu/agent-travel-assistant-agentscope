@@ -9,14 +9,17 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+/** 旅行工具共享支持类，封装 HTTP/JSON 处理和本地兜底数据。 */
 @Component
 public class TravelToolSupport {
 
+    /** 轻量 HTTP 客户端，用于访问外部旅行和天气 API。 */
     private final RestClient restClient = RestClient.create();
 
     @Resource
     private ObjectMapper objectMapper;
 
+    /** 发起 GET 请求并把响应体解析为 JsonNode。 */
     JsonNode getJson(URI uri) {
         String responseBody = restClient.get().uri(uri).retrieve().body(String.class);
         try {
@@ -26,6 +29,7 @@ public class TravelToolSupport {
         }
     }
 
+    /** 将工具返回的结构化 Map 序列化为 Agent 可读取的 JSON 字符串。 */
     String toJson(Map<String, Object> result) {
         try {
             return objectMapper.writeValueAsString(result);
@@ -34,6 +38,7 @@ public class TravelToolSupport {
         }
     }
 
+    /** 根据城市和偏好返回候选景点，作为无外部景点 API 时的本地知识库。 */
     List<String> attractionsFor(String city, String preference) {
         String safePreference = preference == null ? "" : preference;
         boolean food = safePreference.contains("美食");
@@ -82,6 +87,7 @@ public class TravelToolSupport {
         }
     }
 
+    /** 给行程草稿生成晚间安排建议。 */
     String eveningSuggestion(String city, String preference) {
         String safePreference = preference == null ? "" : preference;
         if (safePreference.contains("美食")) {
@@ -101,6 +107,7 @@ public class TravelToolSupport {
         }
     }
 
+    /** 将 Open-Meteo 天气代码翻译为中文描述。 */
     String weatherText(int code) {
         switch (code) {
             case 0:

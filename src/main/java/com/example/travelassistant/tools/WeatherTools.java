@@ -9,6 +9,7 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
+/** 天气查询工具，供 Agent 在规划行程时判断室内外安排。 */
 @Component
 public class WeatherTools {
 
@@ -22,6 +23,7 @@ public class WeatherTools {
             concurrencySafe = true)
     public String getWeather(
             @ToolParam(name = "city", description = "目的地城市中文名，例如北京、杭州、上海") String city) {
+        // Open-Meteo 天气接口需要经纬度，因此先通过地理编码接口定位城市。
         JsonNode geo =
                 support.getJson(
                         UriComponentsBuilder.fromUriString(
@@ -39,6 +41,7 @@ public class WeatherTools {
             return "{\"error\":\"未找到城市\"}";
         }
 
+        // 查询实时天气，并保留原始 weatherCode 方便模型做进一步判断。
         JsonNode weather =
                 support.getJson(
                         UriComponentsBuilder.fromUriString("https://api.open-meteo.com/v1/forecast")

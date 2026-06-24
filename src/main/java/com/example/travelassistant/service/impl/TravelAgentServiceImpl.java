@@ -1,9 +1,16 @@
 package com.example.travelassistant.service.impl;
 
 import com.example.travelassistant.config.TravelAgentProperties;
+import com.example.travelassistant.domain.TravelAgentChatResult;
+import com.example.travelassistant.middleware.AgentRunLogMiddleware;
+import com.example.travelassistant.persistence.enums.MessageRole;
+import com.example.travelassistant.persistence.service.ConversationPersistenceService;
 import com.example.travelassistant.service.TravelAgentService;
+import com.example.travelassistant.persistence.service.TravelStrategyArtifactService;
+import com.example.travelassistant.persistence.entity.ConversationMessageEntity;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.message.AssistantMessage;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.model.Model;
@@ -12,15 +19,19 @@ import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.core.model.transport.OkHttpTransport;
 import jakarta.annotation.Resource;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+/** 旅行助手核心编排服务，负责连接业务会话、AgentScope、模型和产物持久化。 */
 @Service
 public class TravelAgentServiceImpl implements TravelAgentService {
 
+    /** 未显式传入用户 ID 时使用的默认隔离维度。 */
     private static final String DEFAULT_USER_ID = "default-user";
 
+    /** 约束 Agent 的角色、工具调用时机和最终回答格式。 */
     private static final String SYSTEM_PROMPT =
             """
             你是一个中文旅行规划助手，目标是给用户产出可执行、预算友好、兼顾天气和体力的旅行方案。
@@ -42,25 +53,80 @@ public class TravelAgentServiceImpl implements TravelAgentService {
     @Resource(name = "travelAgentStateStore")
     private AgentStateStore stateStore;
 
+    @Resource
+    private ConversationPersistenceService conversationPersistenceService;
+
+    @Resource
+    private AgentRunLogMiddleware agentRunLogMiddleware;
+
+    @Resource
+    private TravelStrategyArtifactService artifactService;
+
     @Override
-    public String chat(String conversationId, String userId, String message) {
+    public TravelAgentChatResult chat(String conversationId, String userId, String message) {
+        String normalizedUserId = StringUtils.hasText(userId) ? userId : DEFAULT_USER_ID;
+        // Redis 中已有 AgentScope 状态时，只需输入本轮消息；否则从 MySQL 恢复最近对话。
+        boolean hasAgentState = stateStore.exists(normalizedUserId, conversationId);
+        List<Msg> inputMessages =
+                hasAgentState
+                        ? List.of(new UserMessage(message))
+                        : buildRecoveredInputMessages(conversationId, message);
+
+        // 先落业务消息，AgentScope middleware 会记录本次 Agent 运行状态。
+        conversationPersistenceService.saveUserMessage(conversationId, normalizedUserId, message);
+
+        // RuntimeContext 中的 sessionId/userId 用来隔离 AgentScope 的 Redis 状态。
         RuntimeContext context =
                 RuntimeContext.builder()
                         .sessionId(conversationId)
-                        .userId(StringUtils.hasText(userId) ? userId : DEFAULT_USER_ID)
+                        .userId(normalizedUserId)
                         .build();
 
         try (ReActAgent agent = buildAgent(conversationId)) {
             Msg response =
-                    agent.call(List.of(new UserMessage(message)), context)
+                    agent.call(inputMessages, context)
                             .block(properties.getTimeout());
+            String answer;
             if (response == null || !StringUtils.hasText(response.getTextContent())) {
-                return "抱歉，我暂时没有生成有效的旅行方案，请补充目的地、天数、预算和同行人后再试。";
+                answer = "抱歉，我暂时没有生成有效的旅行方案，请补充目的地、天数、预算和同行人后再试。";
+            } else {
+                answer = response.getTextContent();
             }
-            return response.getTextContent();
+            // 每次成功回答都保存为 Markdown，方便用户或后续系统引用完整旅行策略。
+            String artifactPath =
+                    artifactService.writeMarkdown(
+                            conversationId, normalizedUserId, message, answer);
+            conversationPersistenceService.saveAssistantMessage(conversationId, answer, artifactPath);
+            return new TravelAgentChatResult(answer, artifactPath);
+        } catch (Exception e) {
+            if (e instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException("Travel agent execution failed", e);
         }
     }
 
+    /** Redis 状态过期或缺失时，将 MySQL 中的最近消息重放为 Agent 输入上下文。 */
+    private List<Msg> buildRecoveredInputMessages(String conversationId, String message) {
+        List<ConversationMessageEntity> history =
+                conversationPersistenceService.findRecentMessages(
+                        conversationId, properties.getHistoryLimit());
+        List<Msg> messages = new ArrayList<>(history.size() + 1);
+        for (ConversationMessageEntity historyMessage : history) {
+            if (!StringUtils.hasText(historyMessage.getContent())) {
+                continue;
+            }
+            if (historyMessage.getRole() == MessageRole.USER) {
+                messages.add(new UserMessage(historyMessage.getContent()));
+            } else if (historyMessage.getRole() == MessageRole.ASSISTANT) {
+                messages.add(new AssistantMessage(historyMessage.getContent()));
+            }
+        }
+        messages.add(new UserMessage(message));
+        return messages;
+    }
+
+    /** 按当前配置构造一次性 ReActAgent，调用结束后由 try-with-resources 关闭。 */
     private ReActAgent buildAgent(String conversationId) {
         return ReActAgent.builder()
                 .name(properties.getName())
@@ -68,11 +134,13 @@ public class TravelAgentServiceImpl implements TravelAgentService {
                 .model(buildModel())
                 .toolkit(toolkit)
                 .stateStore(stateStore)
+                .middleware(agentRunLogMiddleware)
                 .defaultSessionId(conversationId)
                 .maxIters(properties.getMaxIters())
                 .build();
     }
 
+    /** 构造 OpenAI 兼容模型客户端，并从环境变量读取访问令牌。 */
     private Model buildModel() {
         String apiKey = System.getenv(properties.getApiKeyEnv());
         if (!StringUtils.hasText(apiKey)) {

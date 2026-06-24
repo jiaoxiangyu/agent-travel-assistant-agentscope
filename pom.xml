@@ -18,8 +18,11 @@
     <description>Travel assistant agent built with AgentScope Java</description>
 
     <properties>
+        <!-- Java 运行和编译版本。 -->
         <java.version>17</java.version>
+        <!-- 让 Maven Compiler Plugin 统一使用 java.version。 -->
         <maven.compiler.release>${java.version}</maven.compiler.release>
+        <!-- AgentScope Java 依赖版本。 -->
         <agentscope.version>2.0.0-RC3</agentscope.version>
     </properties>
 
@@ -33,6 +36,23 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mybatis.spring.boot</groupId>
+            <artifactId>mybatis-spring-boot-starter</artifactId>
+            <version>4.0.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <dependency>

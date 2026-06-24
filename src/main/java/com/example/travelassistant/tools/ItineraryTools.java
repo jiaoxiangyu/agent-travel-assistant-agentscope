@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
+/** 行程草稿工具，把城市、天数、预算和偏好组合成结构化每日安排。 */
 @Component
 public class ItineraryTools {
 
@@ -26,6 +27,7 @@ public class ItineraryTools {
             @ToolParam(name = "budget", description = "预算描述，例如3000元、不含住宿、人均2000") String budget,
             @ToolParam(name = "preference", description = "旅行偏好，例如人文、美食、亲子、自然") String preference,
             @ToolParam(name = "travelers", description = "同行人描述，例如情侣、亲子、朋友、独自旅行") String travelers) {
+        // 工具层限制天数范围，避免模型传入异常值导致行程过长或为空。
         int normalizedDays = Math.max(1, Math.min(days == null ? 3 : days, 7));
         List<String> attractions = support.attractionsFor(city, preference);
 
@@ -38,6 +40,7 @@ public class ItineraryTools {
 
         List<Map<String, Object>> itinerary = new ArrayList<>();
         for (int i = 1; i <= normalizedDays; i++) {
+            // 用候选景点轮转填充每天上午/下午，最终文案仍由模型润色和取舍。
             Map<String, Object> day = new LinkedHashMap<>();
             day.put("day", i);
             day.put("morning", attractions.get((i - 1) % attractions.size()));
