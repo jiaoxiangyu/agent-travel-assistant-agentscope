@@ -22,7 +22,7 @@ public class TravelAgentConfig {
         return new ObjectMapper();
     }
 
-    /** 将多个旅行领域工具注册到 AgentScope Toolkit，供 ReActAgent 调用。 */
+    /** 将多个旅行领域工具注册到 AgentScope Toolkit，供 HarnessAgent 调用。 */
     @Bean
     public Toolkit travelToolkit(
             WeatherTools weatherTools,

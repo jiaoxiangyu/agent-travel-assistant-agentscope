@@ -1,6 +1,7 @@
 package com.example.travelassistant.service.impl;
 
 import com.example.travelassistant.config.TravelAgentProperties;
+import com.example.travelassistant.config.TravelAgentWorkspaceInitializer;
 import com.example.travelassistant.domain.TravelAgentChatResult;
 import com.example.travelassistant.middleware.AgentRunLogMiddleware;
 import com.example.travelassistant.persistence.enums.MessageRole;
@@ -8,7 +9,6 @@ import com.example.travelassistant.persistence.service.ConversationPersistenceSe
 import com.example.travelassistant.service.TravelAgentService;
 import com.example.travelassistant.persistence.service.TravelStrategyArtifactService;
 import com.example.travelassistant.persistence.entity.ConversationMessageEntity;
-import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.AssistantMessage;
 import io.agentscope.core.message.Msg;
@@ -18,7 +18,10 @@ import io.agentscope.core.model.OpenAIChatModel;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.core.model.transport.OkHttpTransport;
+import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
 import jakarta.annotation.Resource;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -31,18 +34,8 @@ public class TravelAgentServiceImpl implements TravelAgentService {
     /** 未显式传入用户 ID 时使用的默认隔离维度。 */
     private static final String DEFAULT_USER_ID = "default-user";
 
-    /** 约束 Agent 的角色、工具调用时机和最终回答格式。 */
-    private static final String SYSTEM_PROMPT =
-            """
-            你是一个中文旅行规划助手，目标是给用户产出可执行、预算友好、兼顾天气和体力的旅行方案。
-
-            工作方式：
-            1. 先判断用户是否至少提供了目的地和旅行天数；缺少这些关键信息时，先用一句话追问，不要编造。
-            2. 信息足够时，优先调用工具查询城市画像、天气、景点候选，并生成结构化行程草稿。
-            3. 最终回答请用中文 Markdown，包含天气提示、每日行程、交通建议、餐饮/预算建议和注意事项。
-            4. 预算未说明住宿或大交通时，要明确说明估算边界；涉及门票、营业时间、预约要求时提醒以官方信息为准。
-            5. 行程不要过满，每天保留机动时间，并根据天气给出室内/室外备选方案。
-            """;
+    /** Harness 的最小启动提示；详细人格、规则和知识由 Workspace 文件每轮注入。 */
+    private static final String BOOTSTRAP_PROMPT = "你是旅行助手。请严格遵循 Workspace 中的 AGENTS.md 和知识库。";
 
     @Resource
     private TravelAgentProperties properties;
@@ -61,6 +54,9 @@ public class TravelAgentServiceImpl implements TravelAgentService {
 
     @Resource
     private TravelStrategyArtifactService artifactService;
+
+    @Resource
+    private TravelAgentWorkspaceInitializer workspaceInitializer;
 
     @Override
     public TravelAgentChatResult chat(String conversationId, String userId, String message) {
@@ -82,7 +78,7 @@ public class TravelAgentServiceImpl implements TravelAgentService {
                         .userId(normalizedUserId)
                         .build();
 
-        try (ReActAgent agent = buildAgent(conversationId)) {
+        try (HarnessAgent agent = buildAgent(conversationId)) {
             Msg response =
                     agent.call(inputMessages, context)
                             .block(properties.getTimeout());
@@ -126,16 +122,25 @@ public class TravelAgentServiceImpl implements TravelAgentService {
         return messages;
     }
 
-    /** 按当前配置构造一次性 ReActAgent，调用结束后由 try-with-resources 关闭。 */
-    private ReActAgent buildAgent(String conversationId) {
-        return ReActAgent.builder()
+    /** 按当前配置构造一次性 HarnessAgent，调用结束后由 try-with-resources 关闭。 */
+    private HarnessAgent buildAgent(String conversationId) {
+        workspaceInitializer.initialize();
+        return HarnessAgent.builder()
                 .name(properties.getName())
-                .sysPrompt(SYSTEM_PROMPT)
+                .agentId(properties.getAgentId())
+                .sysPrompt(BOOTSTRAP_PROMPT)
                 .model(buildModel())
                 .toolkit(toolkit)
                 .stateStore(stateStore)
                 .middleware(agentRunLogMiddleware)
                 .defaultSessionId(conversationId)
+                .workspace(properties.getWorkspaceDir())
+                .filesystem(
+                        new LocalFilesystemSpec()
+                                .project(Path.of("").toAbsolutePath())
+                                .projectWritable(false))
+                .maxContextTokens(properties.getMaxContextTokens())
+                .disableShellTool()
                 .maxIters(properties.getMaxIters())
                 .build();
     }

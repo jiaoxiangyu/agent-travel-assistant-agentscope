@@ -4,13 +4,14 @@
 
 ## 功能
 
-- 基于 AgentScope `ReActAgent` 编排大模型推理和工具调用
+- 基于 AgentScope `HarnessAgent` 编排大模型推理、工具调用和本机 Workspace
 - 使用 `@Tool` 注册旅行工具：天气查询、城市画像、景点推荐、行程草稿
 - 提供 HTTP 聊天接口，支持 `conversationId` 多轮会话
 - 使用 MySQL 保存业务会话和消息
 - 使用 Redis 保存 Agent 单次执行状态和 AgentScope 内部上下文，支持 TTL 自动清理
 - Redis 上下文缺失时，从 MySQL 最近消息重建多轮语义上下文
-- 将最终旅行策略生成 Markdown 文档并保存到本地
+- 使用 `.agentscope/workspace/travel-assistant` 保存 `AGENTS.md`、知识库、记忆和会话运行文件
+- 将最终旅行策略生成 Markdown 文档并保存到 Workspace 下
 
 ## 运行
 
@@ -30,7 +31,8 @@ travel.agent.api-key-env=MODELSCOPE_API_KEY
 travel.agent.max-iters=6
 travel.agent.history-limit=20
 travel.agent.state-ttl=24h
-travel.agent.artifact-dir=.agentscope/artifacts/travel-strategies
+travel.agent.workspace-dir=.agentscope/workspace/travel-assistant
+travel.agent.artifact-dir=.agentscope/workspace/travel-assistant/artifacts/travel-strategies
 
 spring.datasource.url=jdbc:mysql://localhost:3306/travel_assistant?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
 spring.datasource.username=root
@@ -38,6 +40,19 @@ spring.datasource.password=
 spring.data.redis.host=localhost
 spring.data.redis.port=6379
 ```
+
+启动时应用会按需初始化本机 Workspace：
+
+```text
+.agentscope/workspace/travel-assistant/
+├── AGENTS.md
+├── knowledge/KNOWLEDGE.md
+├── skills/
+├── subagents/
+└── plans/
+```
+
+`AGENTS.md` 和 `knowledge/KNOWLEDGE.md` 只在文件不存在时写入，后续可以直接修改这些文件来调整旅行助手的人格、规则和领域知识。
 
 ## 调用示例
 
@@ -68,6 +83,6 @@ curl -X POST http://localhost:8080/api/travel-agent/chat \
 {
   "conversationId": "uuid",
   "answer": "中文旅行方案",
-  "artifactPath": ".agentscope/artifacts/travel-strategies/alice/uuid/20260623-101500.md"
+  "artifactPath": ".agentscope/workspace/travel-assistant/artifacts/travel-strategies/alice/uuid/20260623-101500.md"
 }
 ```
