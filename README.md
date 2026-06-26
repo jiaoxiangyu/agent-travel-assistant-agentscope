@@ -1,6 +1,6 @@
 # AgentScope 旅行助手 Agent
 
-参考同级 `agent-travel-assistant-demo` 的旅行规划能力，本项目使用 AgentScope Java 搭建了一个 Spring Boot 旅行助手 Agent。
+参考同级 `agent-travel-assistant-demo` 的旅行规划能力，本项目使用 AgentScope2.0 Java 搭建了一个 Spring Boot 旅行助手 Agent。
 
 ## 功能
 

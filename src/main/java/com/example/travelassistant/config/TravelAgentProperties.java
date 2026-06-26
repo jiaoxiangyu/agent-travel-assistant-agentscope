@@ -30,7 +30,7 @@ public class TravelAgentProperties {
     private int historyLimit = 20;
 
     /** 等待模型生成完整响应的最长时间。 */
-    private Duration timeout = Duration.ofSeconds(90);
+    private Duration timeout = Duration.ofSeconds(180);
 
     /** AgentScope 状态在 Redis 中的保留时间。 */
     private Duration stateTtl = Duration.ofHours(24);
