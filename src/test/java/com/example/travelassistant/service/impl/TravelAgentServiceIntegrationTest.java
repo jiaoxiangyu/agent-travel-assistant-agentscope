@@ -35,11 +35,13 @@ import org.springframework.test.context.TestPropertySource;
         properties = {
             "travel.agent.artifact-dir=target/it-artifacts/travel-strategies",
             "travel.agent.run-log-dir=target/it-logs/agent-runs",
+            "travel.agent.compaction-trigger-messages=0",
+            "travel.agent.compaction-trigger-tokens=0",
             "travel.agent.timeout=120s"
         })
 class TravelAgentServiceIntegrationTest {
 
-    private static final String USER_ID = "service-it-user";
+    private static final String USER_ID = "service-it-user-001";
 
     @Autowired
     private TravelAgentService travelAgentService;

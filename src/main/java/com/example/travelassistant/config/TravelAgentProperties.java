@@ -41,6 +41,18 @@ public class TravelAgentProperties {
     /** 注入 Workspace 记忆内容时允许使用的最大上下文 token 预算。 */
     private int maxContextTokens = 8000;
 
+    /** 触发上下文压缩的消息条数阈值，0 表示关闭按消息数触发。 */
+    private int compactionTriggerMessages = 30;
+
+    /** 触发上下文压缩的估算 token 阈值，0 表示关闭按 token 触发。 */
+    private int compactionTriggerTokens = 0;
+
+    /** 上下文压缩后保留的最近原文消息条数。 */
+    private int compactionKeepMessages = 10;
+
+    /** 上下文压缩后保留的最近 token 预算，0 表示按消息条数保留。 */
+    private int compactionKeepTokens = 0;
+
     /** 最终旅行策略 Markdown 文件的根目录。 */
     private Path artifactDir =
             Path.of(".agentscope/workspace/travel-assistant/artifacts/travel-strategies");
@@ -134,6 +146,38 @@ public class TravelAgentProperties {
 
     public void setMaxContextTokens(int maxContextTokens) {
         this.maxContextTokens = maxContextTokens;
+    }
+
+    public int getCompactionTriggerMessages() {
+        return compactionTriggerMessages;
+    }
+
+    public void setCompactionTriggerMessages(int compactionTriggerMessages) {
+        this.compactionTriggerMessages = compactionTriggerMessages;
+    }
+
+    public int getCompactionTriggerTokens() {
+        return compactionTriggerTokens;
+    }
+
+    public void setCompactionTriggerTokens(int compactionTriggerTokens) {
+        this.compactionTriggerTokens = compactionTriggerTokens;
+    }
+
+    public int getCompactionKeepMessages() {
+        return compactionKeepMessages;
+    }
+
+    public void setCompactionKeepMessages(int compactionKeepMessages) {
+        this.compactionKeepMessages = compactionKeepMessages;
+    }
+
+    public int getCompactionKeepTokens() {
+        return compactionKeepTokens;
+    }
+
+    public void setCompactionKeepTokens(int compactionKeepTokens) {
+        this.compactionKeepTokens = compactionKeepTokens;
     }
 
     public Path getArtifactDir() {

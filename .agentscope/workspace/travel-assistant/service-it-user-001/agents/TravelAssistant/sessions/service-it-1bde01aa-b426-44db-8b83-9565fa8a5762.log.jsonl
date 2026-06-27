@@ -1,0 +1,3 @@
+{"type":"message","id":"456951a0-5f36-40a1-923a-64e646d0db04","timestamp":1782548072.350767000,"role":"USER","content":"帮我规划北京3天2晚情侣游"}
+{"type":"message","id":"23185ad7-9d87-4268-9413-536cb20e013e","parentId":"456951a0-5f36-40a1-923a-64e646d0db04","timestamp":1782548072.351081000,"role":"ASSISTANT","content":"本次旅行方案生成时间过长，已超过服务端等待上限。请稍后重试，或先缩小需求范围（例如减少天数、景点数量或预算约束）后再生成。"}
+{"type":"message","id":"5be80e7d-00f4-4b3f-89e5-9919a97f1eaa","parentId":"23185ad7-9d87-4268-9413-536cb20e013e","timestamp":1782548072.351129000,"role":"USER","content":"预算3000元，不含住宿"}

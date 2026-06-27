@@ -21,6 +21,10 @@ import io.agentscope.core.tool.Toolkit;
 import io.agentscope.core.model.transport.OkHttpTransport;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
+import io.agentscope.harness.agent.memory.MemoryConfig;
+import io.agentscope.harness.agent.memory.MemoryConsolidator;
+import io.agentscope.harness.agent.memory.MemoryFlushManager;
+import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import jakarta.annotation.Resource;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -42,6 +46,17 @@ public class TravelAgentServiceImpl implements TravelAgentService {
     private static final String BOOTSTRAP_PROMPT =
             "你是旅行助手。请严格遵循 Workspace 中的 AGENTS.md、知识库和 skills。"
                     + "涉及实时、外部或会变化的信息时，必须优先使用匹配的 skill 或工具查询；没有查询结果时不要编造具体数值。";
+
+    /** 约束 Memory 抽取与合并过程，避免默认英文 prompt 产出英文长期记忆。 */
+    private static final String CHINESE_MEMORY_PROMPT_RULES =
+            """
+
+            Additional project rules:
+            - All extracted and consolidated long-term memories MUST be written in Simplified Chinese.
+            - Keep Markdown headings and bullet points concise, but translate field names and explanations into Chinese.
+            - Preserve useful travel facts such as destination, days, budget, companions, preferences, weather constraints, reservations and follow-up tasks.
+            - Do not output English section titles unless they are proper nouns, product names, tool names or original user text that should be preserved.
+            """;
 
     /** 模型服务返回 429 限流时展示给用户的友好提示。 */
     private static final String RATE_LIMIT_ANSWER =
@@ -268,10 +283,26 @@ public class TravelAgentServiceImpl implements TravelAgentService {
                 .middleware(agentRunLogMiddleware)
                 .defaultSessionId(conversationId)
                 .workspace(properties.getWorkspaceDir())
+                .memory(
+                        MemoryConfig.builder()
+                                .flushPrompt(
+                                        MemoryFlushManager.DEFAULT_FLUSH_PROMPT
+                                                + CHINESE_MEMORY_PROMPT_RULES)
+                                .consolidationPrompt(
+                                        MemoryConsolidator.DEFAULT_CONSOLIDATION_PROMPT
+                                                + CHINESE_MEMORY_PROMPT_RULES)
+                                .build())
                 .filesystem(
                         new LocalFilesystemSpec()
                                 .project(Path.of("").toAbsolutePath())
                                 .projectWritable(false))
+                .compaction(
+                        CompactionConfig.builder()
+                                .triggerMessages(properties.getCompactionTriggerMessages())
+                                .triggerTokens(properties.getCompactionTriggerTokens())
+                                .keepMessages(properties.getCompactionKeepMessages())
+                                .keepTokens(properties.getCompactionKeepTokens())
+                                .build())
                 .maxContextTokens(properties.getMaxContextTokens())
                 .maxIters(properties.getMaxIters())
                 .build();

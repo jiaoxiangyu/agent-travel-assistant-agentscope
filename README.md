@@ -10,6 +10,7 @@
 - 使用 MySQL 保存业务会话和消息
 - 使用 Redis 保存 Agent 单次执行状态和 AgentScope 内部上下文，支持 TTL 自动清理
 - Redis 上下文缺失时，从 MySQL 最近消息重建多轮语义上下文
+- 开启 AgentScope 上下文压缩，长对话会先沉淀 Memory，再压缩旧消息摘要
 - 使用 `.agentscope/workspace/travel-assistant` 保存 `AGENTS.md`、知识库、记忆和会话运行文件
 - 将最终旅行策略生成 Markdown 文档并保存到 Workspace 下
 
@@ -33,6 +34,8 @@ travel.agent.history-limit=20
 travel.agent.state-ttl=24h
 travel.agent.workspace-dir=.agentscope/workspace/travel-assistant
 travel.agent.artifact-dir=.agentscope/workspace/travel-assistant/artifacts/travel-strategies
+travel.agent.compaction-trigger-messages=30
+travel.agent.compaction-keep-messages=10
 
 spring.datasource.url=jdbc:mysql://localhost:3306/travel_assistant?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
 spring.datasource.username=root
