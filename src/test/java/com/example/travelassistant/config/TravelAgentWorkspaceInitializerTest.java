@@ -24,11 +24,37 @@ class TravelAgentWorkspaceInitializerTest {
                 .exists()
                 .isRegularFile();
         assertThat(properties.getWorkspaceDir().resolve("skills")).exists().isDirectory();
+        assertThat(
+                        properties
+                                .getWorkspaceDir()
+                                .resolve("skills")
+                                .resolve("weather")
+                                .resolve("SKILL.md"))
+                .exists()
+                .isRegularFile();
+        assertThat(
+                        properties
+                                .getWorkspaceDir()
+                                .resolve("skills")
+                                .resolve("weather")
+                                .resolve("scripts")
+                                .resolve("get_weather.py"))
+                .exists()
+                .isRegularFile();
         assertThat(properties.getWorkspaceDir().resolve("subagents")).exists().isDirectory();
         assertThat(properties.getWorkspaceDir().resolve("plans")).exists().isDirectory();
         assertThat(Files.readString(properties.getWorkspaceDir().resolve("AGENTS.md")))
                 .contains("中文旅行规划助手")
                 .contains("最终回答请用中文 Markdown");
+        assertThat(
+                        Files.readString(
+                                properties
+                                        .getWorkspaceDir()
+                                        .resolve("skills")
+                                        .resolve("weather")
+                                        .resolve("SKILL.md")))
+                .contains("name: weather")
+                .contains("scripts/get_weather.py");
     }
 
     @Test

@@ -5,7 +5,7 @@
 ## 功能
 
 - 基于 AgentScope `HarnessAgent` 编排大模型推理、工具调用和本机 Workspace
-- 使用 `@Tool` 注册旅行工具：天气查询、城市画像、景点推荐、行程草稿
+- 使用 Workspace `skills/weather` 查询天气，使用 `@Tool` 注册城市画像、景点推荐、行程草稿
 - 提供 HTTP 聊天接口，支持 `conversationId` 多轮会话
 - 使用 MySQL 保存业务会话和消息
 - 使用 Redis 保存 Agent 单次执行状态和 AgentScope 内部上下文，支持 TTL 自动清理
@@ -47,12 +47,12 @@ spring.data.redis.port=6379
 .agentscope/workspace/travel-assistant/
 ├── AGENTS.md
 ├── knowledge/KNOWLEDGE.md
-├── skills/
+├── skills/weather/SKILL.md
 ├── subagents/
 └── plans/
 ```
 
-`AGENTS.md` 和 `knowledge/KNOWLEDGE.md` 只在文件不存在时写入，后续可以直接修改这些文件来调整旅行助手的人格、规则和领域知识。
+`AGENTS.md`、`knowledge/KNOWLEDGE.md` 和 `skills/weather/` 只在文件不存在时写入，后续可以直接修改这些文件来调整旅行助手的人格、规则、领域知识和天气查询方式。
 
 ## 调用示例
 

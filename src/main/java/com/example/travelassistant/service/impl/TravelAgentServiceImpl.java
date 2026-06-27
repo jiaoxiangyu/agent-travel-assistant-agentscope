@@ -39,7 +39,9 @@ public class TravelAgentServiceImpl implements TravelAgentService {
     private static final String DEFAULT_USER_ID = "default-user";
 
     /** Harness 的最小启动提示；详细人格、规则和知识由 Workspace 文件每轮注入。 */
-    private static final String BOOTSTRAP_PROMPT = "你是旅行助手。请严格遵循 Workspace 中的 AGENTS.md 和知识库。";
+    private static final String BOOTSTRAP_PROMPT =
+            "你是旅行助手。请严格遵循 Workspace 中的 AGENTS.md、知识库和 skills。"
+                    + "涉及实时、外部或会变化的信息时，必须优先使用匹配的 skill 或工具查询；没有查询结果时不要编造具体数值。";
 
     /** 模型服务返回 429 限流时展示给用户的友好提示。 */
     private static final String RATE_LIMIT_ANSWER =
@@ -271,7 +273,6 @@ public class TravelAgentServiceImpl implements TravelAgentService {
                                 .project(Path.of("").toAbsolutePath())
                                 .projectWritable(false))
                 .maxContextTokens(properties.getMaxContextTokens())
-                .disableShellTool()
                 .maxIters(properties.getMaxIters())
                 .build();
     }
