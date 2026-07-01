@@ -8,6 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,10 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
 
     private static final Logger log = LoggerFactory.getLogger(AgentRunLogServiceImpl.class);
 
+    /** 本地运行日志使用 24 小时制，避免默认 Instant 的 UTC `T/Z` 格式不便阅读。 */
+    private static final DateTimeFormatter RUN_LOG_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
+
     private final TravelAgentProperties properties;
 
     public AgentRunLogServiceImpl(TravelAgentProperties properties) {
@@ -26,13 +32,21 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
 
     /** 记录一次 Agent 调用开始。 */
     @Override
-    public void markRunning(String runId, String conversationId, String userId, String message) {
+    public void markRunning(
+            String runId,
+            String conversationId,
+            String userId,
+            String agentName,
+            String agentId,
+            String message) {
         Instant now = Instant.now();
         log.info(
-                "Agent run started: runId={}, conversationId={}, userId={}, message={}",
+                "Agent run started: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, message={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 message);
         appendRunLog(
                 userId,
@@ -42,21 +56,38 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 message=%s
 
                 """
-                        .formatted(now, runId, conversationId, userId, message));
+                        .formatted(
+                                formatTimestamp(now),
+                                runId,
+                                conversationId,
+                                userId,
+                                agentName,
+                                agentId,
+                                message));
     }
 
     /** 记录 Agent 调用执行完成。 */
     @Override
-    public void markCompleted(String runId, String conversationId, String userId, long durationMs) {
+    public void markCompleted(
+            String runId,
+            String conversationId,
+            String userId,
+            String agentName,
+            String agentId,
+            long durationMs) {
         Instant now = Instant.now();
         log.info(
-                "Agent run completed: runId={}, conversationId={}, userId={}, durationMs={}",
+                "Agent run completed: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, durationMs={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 durationMs);
         appendRunLog(
                 userId,
@@ -66,10 +97,19 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 durationMs=%d
 
                 """
-                        .formatted(now, runId, conversationId, userId, durationMs));
+                        .formatted(
+                                formatTimestamp(now),
+                                runId,
+                                conversationId,
+                                userId,
+                                agentName,
+                                agentId,
+                                durationMs));
     }
 
     /** 记录执行失败和异常消息。 */
@@ -78,15 +118,19 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             long durationMs,
             Exception exception) {
         Instant now = Instant.now();
         String error = exception == null ? "unknown" : exception.getMessage();
         log.info(
-                "Agent run failed: runId={}, conversationId={}, userId={}, durationMs={}, error={}",
+                "Agent run failed: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, durationMs={}, error={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 durationMs,
                 error,
                 exception);
@@ -98,11 +142,21 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 durationMs=%d
                 error=%s
 
                 """
-                        .formatted(now, runId, conversationId, userId, durationMs, error));
+                        .formatted(
+                                formatTimestamp(now),
+                                runId,
+                                conversationId,
+                                userId,
+                                agentName,
+                                agentId,
+                                durationMs,
+                                error));
     }
 
     /** 记录一轮 Agent 推理开始。 */
@@ -111,6 +165,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             int messageCount,
             int toolCount,
@@ -118,10 +174,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String toolNames) {
         Instant now = Instant.now();
         log.info(
-                "Agent reasoning started: runId={}, conversationId={}, userId={}, step={}, messageCount={}, toolCount={}, tools={}",
+                "Agent reasoning started: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, step={}, messageCount={}, toolCount={}, tools={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 reasoningStep,
                 messageCount,
                 toolCount,
@@ -134,6 +192,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 reasoningStep=%d
                 messageCount=%d
                 toolCount=%d
@@ -142,10 +202,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
 
                 """
                         .formatted(
-                                now,
+                                formatTimestamp(now),
                                 runId,
                                 conversationId,
                                 userId,
+                                agentName,
+                                agentId,
                                 reasoningStep,
                                 messageCount,
                                 toolCount,
@@ -159,14 +221,18 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             long durationMs) {
         Instant now = Instant.now();
         log.info(
-                "Agent reasoning completed: runId={}, conversationId={}, userId={}, step={}, durationMs={}",
+                "Agent reasoning completed: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, step={}, durationMs={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 reasoningStep,
                 durationMs);
         appendRunLog(
@@ -177,11 +243,21 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 reasoningStep=%d
                 durationMs=%d
 
                 """
-                        .formatted(now, runId, conversationId, userId, reasoningStep, durationMs));
+                        .formatted(
+                                formatTimestamp(now),
+                                runId,
+                                conversationId,
+                                userId,
+                                agentName,
+                                agentId,
+                                reasoningStep,
+                                durationMs));
     }
 
     /** 记录一轮 Agent 推理失败。 */
@@ -190,16 +266,20 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             long durationMs,
             Exception exception) {
         Instant now = Instant.now();
         String error = exception == null ? "unknown" : exception.getMessage();
         log.info(
-                "Agent reasoning failed: runId={}, conversationId={}, userId={}, step={}, durationMs={}, error={}",
+                "Agent reasoning failed: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, step={}, durationMs={}, error={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 reasoningStep,
                 durationMs,
                 error,
@@ -212,13 +292,23 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 reasoningStep=%d
                 durationMs=%d
                 error=%s
 
                 """
                         .formatted(
-                                now, runId, conversationId, userId, reasoningStep, durationMs, error));
+                                formatTimestamp(now),
+                                runId,
+                                conversationId,
+                                userId,
+                                agentName,
+                                agentId,
+                                reasoningStep,
+                                durationMs,
+                                error));
     }
 
     /** 记录一轮推理使用的 system prompt 摘要。 */
@@ -227,16 +317,20 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             int promptLength,
             long durationMs,
             String promptSummary) {
         Instant now = Instant.now();
         log.info(
-                "Agent system prompt prepared: runId={}, conversationId={}, userId={}, step={}, promptLength={}, durationMs={}",
+                "Agent system prompt prepared: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, step={}, promptLength={}, durationMs={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 reasoningStep,
                 promptLength,
                 durationMs);
@@ -248,6 +342,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 reasoningStep=%d
                 promptLength=%d
                 durationMs=%d
@@ -255,10 +351,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
 
                 """
                         .formatted(
-                                now,
+                                formatTimestamp(now),
                                 runId,
                                 conversationId,
                                 userId,
+                                agentName,
+                                agentId,
                                 reasoningStep,
                                 promptLength,
                                 durationMs,
@@ -271,6 +369,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             String modelName,
             int messageCount,
@@ -278,10 +378,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String requestSummary) {
         Instant now = Instant.now();
         log.info(
-                "Agent model call started: runId={}, conversationId={}, userId={}, step={}, model={}, messageCount={}, toolCount={}",
+                "Agent model call started: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, step={}, model={}, messageCount={}, toolCount={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 reasoningStep,
                 modelName,
                 messageCount,
@@ -294,6 +396,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 reasoningStep=%d
                 model=%s
                 messageCount=%d
@@ -302,10 +406,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
 
                 """
                         .formatted(
-                                now,
+                                formatTimestamp(now),
                                 runId,
                                 conversationId,
                                 userId,
+                                agentName,
+                                agentId,
                                 reasoningStep,
                                 modelName,
                                 messageCount,
@@ -319,6 +425,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             String modelName,
             long durationMs,
@@ -328,10 +436,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String toolCallSummary) {
         Instant now = Instant.now();
         log.info(
-                "Agent model call completed: runId={}, conversationId={}, userId={}, step={}, model={}, durationMs={}",
+                "Agent model call completed: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, step={}, model={}, durationMs={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 reasoningStep,
                 modelName,
                 durationMs);
@@ -343,6 +453,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 reasoningStep=%d
                 model=%s
                 durationMs=%d
@@ -353,10 +465,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
 
                 """
                         .formatted(
-                                now,
+                                formatTimestamp(now),
                                 runId,
                                 conversationId,
                                 userId,
+                                agentName,
+                                agentId,
                                 reasoningStep,
                                 modelName,
                                 durationMs,
@@ -372,6 +486,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             String modelName,
             long durationMs,
@@ -379,10 +495,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
         Instant now = Instant.now();
         String error = exception == null ? "unknown" : exception.getMessage();
         log.info(
-                "Agent model call failed: runId={}, conversationId={}, userId={}, step={}, model={}, durationMs={}, error={}",
+                "Agent model call failed: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, step={}, model={}, durationMs={}, error={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 reasoningStep,
                 modelName,
                 durationMs,
@@ -396,6 +514,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 reasoningStep=%d
                 model=%s
                 durationMs=%d
@@ -403,10 +523,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
 
                 """
                         .formatted(
-                                now,
+                                formatTimestamp(now),
                                 runId,
                                 conversationId,
                                 userId,
+                                agentName,
+                                agentId,
                                 reasoningStep,
                                 modelName,
                                 durationMs,
@@ -419,15 +541,19 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             String toolCallId,
             String toolName,
             String input) {
         Instant now = Instant.now();
         log.info(
-                "Agent tool started: runId={}, conversationId={}, userId={}, toolCallId={}, toolName={}, input={}",
+                "Agent tool started: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, toolCallId={}, toolName={}, input={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 toolCallId,
                 toolName,
                 input);
@@ -439,12 +565,23 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 toolCallId=%s
                 toolName=%s
                 input=%s
 
                 """
-                        .formatted(now, runId, conversationId, userId, toolCallId, toolName, input));
+                        .formatted(
+                                formatTimestamp(now),
+                                runId,
+                                conversationId,
+                                userId,
+                                agentName,
+                                agentId,
+                                toolCallId,
+                                toolName,
+                                input));
     }
 
     /** 记录工具调用完成。 */
@@ -453,16 +590,20 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             String toolCallId,
             String toolName,
             long durationMs,
             String outputSummary) {
         Instant now = Instant.now();
         log.info(
-                "Agent tool completed: runId={}, conversationId={}, userId={}, toolCallId={}, toolName={}, durationMs={}",
+                "Agent tool completed: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, toolCallId={}, toolName={}, durationMs={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 toolCallId,
                 toolName,
                 durationMs);
@@ -474,6 +615,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 toolCallId=%s
                 toolName=%s
                 durationMs=%d
@@ -481,10 +624,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
 
                 """
                         .formatted(
-                                now,
+                                formatTimestamp(now),
                                 runId,
                                 conversationId,
                                 userId,
+                                agentName,
+                                agentId,
                                 toolCallId,
                                 toolName,
                                 durationMs,
@@ -497,6 +642,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             String toolCallId,
             String toolName,
             long durationMs,
@@ -504,10 +651,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
         Instant now = Instant.now();
         String error = exception == null ? "unknown" : exception.getMessage();
         log.info(
-                "Agent tool failed: runId={}, conversationId={}, userId={}, toolCallId={}, toolName={}, durationMs={}, error={}",
+                "Agent tool failed: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, toolCallId={}, toolName={}, durationMs={}, error={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 toolCallId,
                 toolName,
                 durationMs,
@@ -521,6 +670,8 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 toolCallId=%s
                 toolName=%s
                 durationMs=%d
@@ -528,10 +679,12 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
 
                 """
                         .formatted(
-                                now,
+                                formatTimestamp(now),
                                 runId,
                                 conversationId,
                                 userId,
+                                agentName,
+                                agentId,
                                 toolCallId,
                                 toolName,
                                 durationMs,
@@ -544,14 +697,18 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             long durationMs,
             String responseSummary) {
         Instant now = Instant.now();
         log.info(
-                "Agent final response observed: runId={}, conversationId={}, userId={}, durationMs={}",
+                "Agent final response observed: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, durationMs={}",
                 runId,
                 conversationId,
                 userId,
+                agentName,
+                agentId,
                 durationMs);
         appendRunLog(
                 userId,
@@ -561,11 +718,73 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                 runId=%s
                 conversationId=%s
                 userId=%s
+                agentName=%s
+                agentId=%s
                 durationMs=%d
                 responseSummary=%s
 
                 """
-                        .formatted(now, runId, conversationId, userId, durationMs, responseSummary));
+                        .formatted(
+                                formatTimestamp(now),
+                                runId,
+                                conversationId,
+                                userId,
+                                agentName,
+                                agentId,
+                                durationMs,
+                                responseSummary));
+    }
+
+    /** 记录父 Agent streamEvents 中转发出来的子 Agent 事件。 */
+    @Override
+    public void markSubagentEvent(
+            String runId,
+            String conversationId,
+            String userId,
+            String agentName,
+            String agentId,
+            String source,
+            String eventType,
+            String eventId,
+            String eventSummary) {
+        Instant now = Instant.now();
+        log.info(
+                "Subagent event observed: runId={}, conversationId={}, userId={}, agentName={}, agentId={}, source={}, eventType={}, eventId={}",
+                runId,
+                conversationId,
+                userId,
+                agentName,
+                agentId,
+                source,
+                eventType,
+                eventId);
+        appendRunLog(
+                userId,
+                conversationId,
+                """
+                [%s] SUBAGENT_EVENT
+                runId=%s
+                conversationId=%s
+                userId=%s
+                agentName=%s
+                agentId=%s
+                source=%s
+                eventType=%s
+                eventId=%s
+                eventSummary=%s
+
+                """
+                        .formatted(
+                                formatTimestamp(now),
+                                runId,
+                                conversationId,
+                                userId,
+                                agentName,
+                                agentId,
+                                source,
+                                eventType,
+                                eventId,
+                                eventSummary));
     }
 
     private void appendRunLog(String userId, String conversationId, String content) {
@@ -590,6 +809,10 @@ public class AgentRunLogServiceImpl implements AgentRunLogService {
                     file,
                     e);
         }
+    }
+
+    private String formatTimestamp(Instant instant) {
+        return RUN_LOG_TIME_FORMATTER.format(instant);
     }
 
     private String sanitizePathSegment(String value) {

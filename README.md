@@ -5,6 +5,7 @@
 ## 功能
 
 - 基于 AgentScope `HarnessAgent` 编排大模型推理、工具调用和本机 Workspace
+- 使用 Harness Subagent 机制，主 Agent 可通过 `agent_spawn` 委派 `researcher` 和 `reviewer`
 - 使用 Workspace `skills/weather` 查询天气，使用 `@Tool` 注册城市画像、景点推荐、行程草稿
 - 提供 HTTP 聊天接口，支持 `conversationId` 多轮会话
 - 使用 MySQL 保存业务会话和消息
@@ -51,11 +52,26 @@ spring.data.redis.port=6379
 ├── AGENTS.md
 ├── knowledge/KNOWLEDGE.md
 ├── skills/weather/SKILL.md
-├── subagents/
+├── subagents/researcher.md
+├── subagents/reviewer.md
 └── plans/
 ```
 
-`AGENTS.md`、`knowledge/KNOWLEDGE.md` 和 `skills/weather/` 只在文件不存在时写入，后续可以直接修改这些文件来调整旅行助手的人格、规则、领域知识和天气查询方式。
+`AGENTS.md`、`knowledge/KNOWLEDGE.md`、`subagents/` 和 `skills/weather/` 只在文件不存在时写入，后续可以直接修改这些文件来调整旅行助手的人格、规则、子 Agent 职责、领域知识和天气查询方式。
+
+## Agent 协作流程
+
+应用对外仍暴露一个旅行助手接口，Java 层只调用一个主 `HarnessAgent`。多 Agent 协作由 Harness Subagent 机制完成：主 Agent 在推理过程中按需调用 `agent_spawn`，把上下文重或质量检查类任务委派给 Workspace 中声明的子 Agent。
+
+```text
+用户请求
+  -> TravelAssistant 主 Agent
+      -> researcher：按需收集城市画像、天气、景点和约束摘要
+      -> reviewer：按需检查预算、天气、节奏和遗漏项
+  -> 主 Agent 汇总并输出最终 Markdown 回答
+```
+
+最终只有主 Agent 的回答会保存到 MySQL 和旅行策略 Markdown；子 Agent 作为 Harness 内部委派任务运行，结果通过工具结果返回给主 Agent。
 
 ## 调用示例
 

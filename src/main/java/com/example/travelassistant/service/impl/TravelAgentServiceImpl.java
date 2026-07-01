@@ -10,6 +10,8 @@ import com.example.travelassistant.service.TravelAgentService;
 import com.example.travelassistant.persistence.service.TravelStrategyArtifactService;
 import com.example.travelassistant.persistence.entity.ConversationMessageEntity;
 import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.message.AssistantMessage;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.UserMessage;
@@ -44,8 +46,15 @@ public class TravelAgentServiceImpl implements TravelAgentService {
 
     /** Harness 的最小启动提示；详细人格、规则和知识由 Workspace 文件每轮注入。 */
     private static final String BOOTSTRAP_PROMPT =
-            "你是旅行助手。请严格遵循 Workspace 中的 AGENTS.md、知识库和 skills。"
-                    + "涉及实时、外部或会变化的信息时，必须优先使用匹配的 skill 或工具查询；没有查询结果时不要编造具体数值。";
+            """
+            你是旅行助手主 Agent，负责理解用户需求、决定是否委派子 Agent，并输出最终旅行方案。
+            请严格遵循 Workspace 中的 AGENTS.md、知识库和 skills。
+            信息不足时先追问；只要用户至少提供目的地和旅行天数，就必须先用 agent_spawn 同步委派 researcher 收集资料摘要。
+            生成最终回答前，必须先整理一份完整方案草稿，并把完整草稿正文、用户原始约束、预算边界和 researcher 摘要一起放进 agent_spawn 的 task 中，委派 reviewer 审阅；不能只传“审阅预算/节奏”这类摘要任务。
+            reviewer 返回意见后，必须根据审稿意见修订，再输出最终回答。
+            涉及实时、外部或会变化的信息时，必须优先使用匹配的 skill、工具或 researcher 子 Agent 查询；没有查询结果时不要编造具体数值。
+            最终回答只面向用户，不要暴露内部 agent_spawn、子 Agent 结果或审稿过程。
+            """;
 
     /** 约束 Memory 抽取与合并过程，避免默认英文 prompt 产出英文长期记忆。 */
     private static final String CHINESE_MEMORY_PROMPT_RULES =
@@ -89,8 +98,18 @@ public class TravelAgentServiceImpl implements TravelAgentService {
 
     @Override
     public TravelAgentChatResult chat(String conversationId, String userId, String message) {
+        return executeChat(conversationId, userId, message);
+    }
+
+    /**
+     * 执行一次对用户可见的聊天请求。
+     *
+     * <p>外部只调用一个 HarnessAgent。多 Agent 协作交给 Harness subagent 机制：
+     * 主 Agent 在推理时可通过 agent_spawn 委派 Workspace 中声明的 researcher / reviewer。
+     */
+    private TravelAgentChatResult executeChat(String conversationId, String userId, String message) {
         String normalizedUserId = StringUtils.hasText(userId) ? userId : DEFAULT_USER_ID;
-        // Redis 中已有 AgentScope 状态时，只需输入本轮消息；否则从 MySQL 恢复最近对话。
+        // 主 Agent 使用业务 conversationId 保存 AgentScope 状态；缺失时从 MySQL 恢复最近业务消息。
         boolean hasAgentState = stateStore.exists(normalizedUserId, conversationId);
         List<Msg> inputMessages =
                 hasAgentState
@@ -100,7 +119,7 @@ public class TravelAgentServiceImpl implements TravelAgentService {
         // 先落业务消息，AgentScope middleware 会记录本次 Agent 运行状态。
         conversationPersistenceService.saveUserMessage(conversationId, normalizedUserId, message);
 
-        // RuntimeContext 中的 sessionId/userId 用来隔离 AgentScope 的 Redis 状态。
+        // RuntimeContext 中的 sessionId/userId 会透传给子 Agent，保持多租户与会话隔离链路一致。
         RuntimeContext context =
                 RuntimeContext.builder()
                         .sessionId(conversationId)
@@ -108,9 +127,12 @@ public class TravelAgentServiceImpl implements TravelAgentService {
                         .build();
 
         try (HarnessAgent agent = buildAgent(conversationId)) {
-            Msg response =
-                    agent.call(inputMessages, context)
+            List<AgentEvent> events =
+                    agent.streamEvents(inputMessages, context)
+                            .timeout(properties.getTimeout())
+                            .collectList()
                             .block(properties.getTimeout());
+            Msg response = extractFinalResponse(events);
             return saveAssistantResult(conversationId, normalizedUserId, message, resolveAnswer(response));
         } catch (Exception e) {
             if (isRateLimitException(e)) {
@@ -128,57 +150,8 @@ public class TravelAgentServiceImpl implements TravelAgentService {
 
     @Override
     public Flux<TravelAgentChatResult> chatStream(String conversationId, String userId, String message) {
-        String normalizedUserId = StringUtils.hasText(userId) ? userId : DEFAULT_USER_ID;
-        // Redis 中已有 AgentScope 状态时，只需输入本轮消息；否则从 MySQL 恢复最近对话。
-        boolean hasAgentState = stateStore.exists(normalizedUserId, conversationId);
-        List<Msg> inputMessages =
-                hasAgentState
-                        ? List.of(new UserMessage(message))
-                        : buildRecoveredInputMessages(conversationId, message);
-
-        // 先落业务消息，AgentScope middleware 会记录本次 Agent 运行状态。
-        conversationPersistenceService.saveUserMessage(conversationId, normalizedUserId, message);
-
-        // RuntimeContext 中的 sessionId/userId 用来隔离 AgentScope 的 Redis 状态。
-        RuntimeContext context =
-                RuntimeContext.builder()
-                        .sessionId(conversationId)
-                        .userId(normalizedUserId)
-                        .build();
-
-        HarnessAgent agent = buildAgent(conversationId);
-        try {
-            return agent.call(inputMessages, context)
-                    .timeout(properties.getTimeout())
-                    .map(this::resolveAnswer)
-                    .map(answer -> saveAssistantResult(conversationId, normalizedUserId, message, answer))
-                    .doFinally(signalType -> closeAgent(agent))
-                    .onErrorResume(
-                            e -> {
-                                if (isRateLimitException(e)) {
-                                    return Mono.just(
-                                            saveAssistantErrorResult(conversationId, RATE_LIMIT_ANSWER));
-                                }
-                                if (isTimeoutException(e)) {
-                                    return Mono.just(
-                                            saveAssistantErrorResult(conversationId, TIMEOUT_ANSWER));
-                                }
-                                return Mono.error(mapExecutionException(e));
-                            })
-                    .flux();
-        } catch (Exception e) {
-            closeAgent(agent);
-            if (isRateLimitException(e)) {
-                return Flux.just(saveAssistantErrorResult(conversationId, RATE_LIMIT_ANSWER));
-            }
-            if (isTimeoutException(e)) {
-                return Flux.just(saveAssistantErrorResult(conversationId, TIMEOUT_ANSWER));
-            }
-            if (e instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new IllegalStateException("Travel agent execution failed", e);
-        }
+        // AgentScope Java 当前返回完整消息；SSE 层仍复用同步编排结果再由 controller 切 delta。
+        return Mono.fromCallable(() -> executeChat(conversationId, userId, message)).flux();
     }
 
     /** Redis 状态过期或缺失时，将 MySQL 中的最近消息重放为 Agent 输入上下文。 */
@@ -208,6 +181,25 @@ public class TravelAgentServiceImpl implements TravelAgentService {
         return response.getTextContent();
     }
 
+    private Msg extractFinalResponse(List<AgentEvent> events) {
+        if (events == null || events.isEmpty()) {
+            return null;
+        }
+        Msg fallback = null;
+        Msg parentResult = null;
+        for (AgentEvent event : events) {
+            if (event instanceof AgentResultEvent resultEvent) {
+                Msg result = resultEvent.getResult();
+                if (event.getSource() == null) {
+                    parentResult = result;
+                } else {
+                    fallback = result;
+                }
+            }
+        }
+        return parentResult == null ? fallback : parentResult;
+    }
+
     private TravelAgentChatResult saveAssistantResult(
             String conversationId, String normalizedUserId, String message, String answer) {
         // 每次成功回答都保存为 Markdown，方便用户或后续系统引用完整旅行策略。
@@ -221,13 +213,6 @@ public class TravelAgentServiceImpl implements TravelAgentService {
     private TravelAgentChatResult saveAssistantErrorResult(String conversationId, String answer) {
         conversationPersistenceService.saveAssistantMessage(conversationId, answer, null);
         return new TravelAgentChatResult(answer, null);
-    }
-
-    private RuntimeException mapExecutionException(Throwable e) {
-        if (e instanceof RuntimeException runtimeException) {
-            return runtimeException;
-        }
-        return new IllegalStateException("Travel agent execution failed", e);
     }
 
     private boolean isRateLimitException(Throwable e) {
@@ -260,14 +245,6 @@ public class TravelAgentServiceImpl implements TravelAgentService {
             current = current.getCause();
         }
         return false;
-    }
-
-    private void closeAgent(HarnessAgent agent) {
-        try {
-            agent.close();
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to close travel agent", e);
-        }
     }
 
     /** 按当前配置构造一次性 HarnessAgent，调用结束后由 try-with-resources 关闭。 */

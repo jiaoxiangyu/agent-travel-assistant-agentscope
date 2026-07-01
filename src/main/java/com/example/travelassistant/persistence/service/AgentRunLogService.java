@@ -4,20 +4,35 @@ package com.example.travelassistant.persistence.service;
 public interface AgentRunLogService {
 
     /** 记录一次 Agent 调用开始。 */
-    void markRunning(String runId, String conversationId, String userId, String message);
+    void markRunning(
+            String runId,
+            String conversationId,
+            String userId,
+            String agentName,
+            String agentId,
+            String message);
 
     /** 记录 Agent 调用执行完成。 */
-    void markCompleted(String runId, String conversationId, String userId, long durationMs);
+    void markCompleted(
+            String runId, String conversationId, String userId, String agentName, String agentId, long durationMs);
 
     /** 记录执行失败和异常消息。 */
     void markFailed(
-            String runId, String conversationId, String userId, long durationMs, Exception exception);
+            String runId,
+            String conversationId,
+            String userId,
+            String agentName,
+            String agentId,
+            long durationMs,
+            Exception exception);
 
     /** 记录一轮 Agent 推理开始。 */
     void markReasoningStarted(
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             int messageCount,
             int toolCount,
@@ -26,13 +41,21 @@ public interface AgentRunLogService {
 
     /** 记录一轮 Agent 推理完成。 */
     void markReasoningCompleted(
-            String runId, String conversationId, String userId, int reasoningStep, long durationMs);
+            String runId,
+            String conversationId,
+            String userId,
+            String agentName,
+            String agentId,
+            int reasoningStep,
+            long durationMs);
 
     /** 记录一轮 Agent 推理失败。 */
     void markReasoningFailed(
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             long durationMs,
             Exception exception);
@@ -42,6 +65,8 @@ public interface AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             int promptLength,
             long durationMs,
@@ -52,6 +77,8 @@ public interface AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             String modelName,
             int messageCount,
@@ -63,6 +90,8 @@ public interface AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             String modelName,
             long durationMs,
@@ -76,6 +105,8 @@ public interface AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             int reasoningStep,
             String modelName,
             long durationMs,
@@ -86,6 +117,8 @@ public interface AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             String toolCallId,
             String toolName,
             String input);
@@ -95,6 +128,8 @@ public interface AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             String toolCallId,
             String toolName,
             long durationMs,
@@ -105,6 +140,8 @@ public interface AgentRunLogService {
             String runId,
             String conversationId,
             String userId,
+            String agentName,
+            String agentId,
             String toolCallId,
             String toolName,
             long durationMs,
@@ -112,5 +149,23 @@ public interface AgentRunLogService {
 
     /** 记录 Agent 最终对用户可见的回答。 */
     void markFinalResponse(
-            String runId, String conversationId, String userId, long durationMs, String responseSummary);
+            String runId,
+            String conversationId,
+            String userId,
+            String agentName,
+            String agentId,
+            long durationMs,
+            String responseSummary);
+
+    /** 记录父 Agent 事件流中转发的子 Agent 事件。 */
+    void markSubagentEvent(
+            String runId,
+            String conversationId,
+            String userId,
+            String agentName,
+            String agentId,
+            String source,
+            String eventType,
+            String eventId,
+            String eventSummary);
 }

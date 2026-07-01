@@ -53,19 +53,31 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
         String runId = UUID.randomUUID().toString();
         String conversationId = context.getSessionId();
         String userId = context.getUserId();
-        String runKey = runKey(conversationId, userId);
-        ActiveRun activeRun = new ActiveRun(runId, System.nanoTime());
+        AgentIdentity agentIdentity = agentIdentity(agent);
+        String runKey = runKey(agentIdentity, conversationId, userId);
+        ActiveRun activeRun = new ActiveRun(runId, System.nanoTime(), agentIdentity);
         activeRuns.put(runKey, activeRun);
         context.put("agentRunId", runId);
 
-        agentRunLogService.markRunning(runId, conversationId, userId, latestMessage(input.msgs()));
+        agentRunLogService.markRunning(
+                runId,
+                conversationId,
+                userId,
+                agentIdentity.name(),
+                agentIdentity.id(),
+                latestMessage(input.msgs()));
 
         return next.apply(input)
                 .doOnNext(event -> observeAgentEvent(activeRun, conversationId, userId, event))
                 .doOnComplete(
                         () -> {
                             agentRunLogService.markCompleted(
-                                    runId, conversationId, userId, durationMs(activeRun.startNanos()));
+                                    runId,
+                                    conversationId,
+                                    userId,
+                                    agentIdentity.name(),
+                                    agentIdentity.id(),
+                                    durationMs(activeRun.startNanos()));
                         })
                 .doOnError(
                         error -> {
@@ -73,6 +85,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                                     runId,
                                     conversationId,
                                     userId,
+                                    agentIdentity.name(),
+                                    agentIdentity.id(),
                                     durationMs(activeRun.startNanos()),
                                     asException(error));
                         })
@@ -88,7 +102,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
             Function<ReasoningInput, Flux<AgentEvent>> next) {
         String conversationId = context.getSessionId();
         String userId = context.getUserId();
-        ActiveRun activeRun = activeRun(context);
+        ActiveRun activeRun = activeRun(agent, context);
+        AgentIdentity agentIdentity = agentIdentity(agent, activeRun);
         String runId = runId(context, activeRun);
         int reasoningStep = nextReasoningStep(context, activeRun);
         List<Msg> messages = input.messages();
@@ -99,6 +114,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                 runId,
                 conversationId,
                 userId,
+                agentIdentity.name(),
+                agentIdentity.id(),
                 reasoningStep,
                 size(messages),
                 size(tools),
@@ -112,6 +129,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                                     runId,
                                     conversationId,
                                     userId,
+                                    agentIdentity.name(),
+                                    agentIdentity.id(),
                                     reasoningStep,
                                     durationMs(startNanos));
                         })
@@ -121,6 +140,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                                     runId,
                                     conversationId,
                                     userId,
+                                    agentIdentity.name(),
+                                    agentIdentity.id(),
                                     reasoningStep,
                                     durationMs(startNanos),
                                     asException(error));
@@ -136,7 +157,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
             Function<ModelCallInput, Flux<AgentEvent>> next) {
         String conversationId = context.getSessionId();
         String userId = context.getUserId();
-        ActiveRun activeRun = activeRun(context);
+        ActiveRun activeRun = activeRun(agent, context);
+        AgentIdentity agentIdentity = agentIdentity(agent, activeRun);
         String runId = runId(context, activeRun);
         int reasoningStep = currentReasoningStep(context, activeRun);
         String modelName = modelName(input);
@@ -147,6 +169,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                 runId,
                 conversationId,
                 userId,
+                agentIdentity.name(),
+                agentIdentity.id(),
                 reasoningStep,
                 modelName,
                 size(input.messages()),
@@ -161,6 +185,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                                     runId,
                                     conversationId,
                                     userId,
+                                    agentIdentity.name(),
+                                    agentIdentity.id(),
                                     reasoningStep,
                                     modelName,
                                     durationMs(startNanos),
@@ -175,6 +201,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                                     runId,
                                     conversationId,
                                     userId,
+                                    agentIdentity.name(),
+                                    agentIdentity.id(),
                                     reasoningStep,
                                     modelName,
                                     durationMs(startNanos),
@@ -187,7 +215,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
     public Mono<String> onSystemPrompt(Agent agent, RuntimeContext context, String currentPrompt) {
         String conversationId = context.getSessionId();
         String userId = context.getUserId();
-        ActiveRun activeRun = activeRun(context);
+        ActiveRun activeRun = activeRun(agent, context);
+        AgentIdentity agentIdentity = agentIdentity(agent, activeRun);
         String runId = runId(context, activeRun);
         long startNanos = System.nanoTime();
         String prompt = currentPrompt == null ? "" : currentPrompt;
@@ -196,6 +225,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                 runId,
                 conversationId,
                 userId,
+                agentIdentity.name(),
+                agentIdentity.id(),
                 currentReasoningStep(context, activeRun),
                 prompt.length(),
                 durationMs(startNanos),
@@ -213,7 +244,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
             Function<ActingInput, Flux<AgentEvent>> next) {
         String conversationId = context.getSessionId();
         String userId = context.getUserId();
-        ActiveRun activeRun = activeRun(context);
+        ActiveRun activeRun = activeRun(agent, context);
+        AgentIdentity agentIdentity = agentIdentity(agent, activeRun);
         String runId = runId(context, activeRun);
         List<ToolUseBlock> toolCalls = input.toolCalls();
         long startNanos = System.nanoTime();
@@ -224,6 +256,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                     runId,
                     conversationId,
                     userId,
+                    agentIdentity.name(),
+                    agentIdentity.id(),
                     toolCall.getId(),
                     toolCall.getName(),
                     truncate(String.valueOf(toolCall.getInput())));
@@ -238,6 +272,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                                         runId,
                                         conversationId,
                                         userId,
+                                        agentIdentity.name(),
+                                        agentIdentity.id(),
                                         toolCall.getId(),
                                         toolCall.getName(),
                                         durationMs(startNanos),
@@ -251,6 +287,8 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                                         runId,
                                         conversationId,
                                         userId,
+                                        agentIdentity.name(),
+                                        agentIdentity.id(),
                                         toolCall.getId(),
                                         toolCall.getName(),
                                         durationMs(startNanos),
@@ -261,6 +299,23 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
 
     private void observeAgentEvent(
             ActiveRun activeRun, String conversationId, String userId, AgentEvent event) {
+        if (event == null) {
+            return;
+        }
+        if (hasText(event.getSource())) {
+            AgentIdentity subagentIdentity = subagentIdentity(event.getSource());
+            agentRunLogService.markSubagentEvent(
+                    activeRun.runId(),
+                    conversationId,
+                    userId,
+                    subagentIdentity.name(),
+                    subagentIdentity.id(),
+                    event.getSource(),
+                    event.getType().name(),
+                    event.getId(),
+                    truncate(event.toString()));
+            return;
+        }
         if (event instanceof AgentResultEvent resultEvent
                 && activeRun.finalResponseLogged().compareAndSet(false, true)) {
             Msg result = resultEvent.getResult();
@@ -268,13 +323,15 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
                     activeRun.runId(),
                     conversationId,
                     userId,
+                    activeRun.agentIdentity().name(),
+                    activeRun.agentIdentity().id(),
                     durationMs(activeRun.startNanos()),
                     truncate(result == null ? "" : result.getTextContent()));
         }
     }
 
-    private ActiveRun activeRun(RuntimeContext context) {
-        return activeRuns.get(runKey(context.getSessionId(), context.getUserId()));
+    private ActiveRun activeRun(Agent agent, RuntimeContext context) {
+        return activeRuns.get(runKey(agentIdentity(agent), context.getSessionId(), context.getUserId()));
     }
 
     private String runId(RuntimeContext context, ActiveRun activeRun) {
@@ -304,8 +361,40 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
         return currentStep == null ? 0 : currentStep;
     }
 
-    private String runKey(String conversationId, String userId) {
-        return (userId == null ? "" : userId) + "::" + (conversationId == null ? "" : conversationId);
+    private String runKey(AgentIdentity agentIdentity, String conversationId, String userId) {
+        return (userId == null ? "" : userId)
+                + "::"
+                + (conversationId == null ? "" : conversationId)
+                + "::"
+                + agentIdentity.id();
+    }
+
+    private AgentIdentity agentIdentity(Agent agent) {
+        if (agent == null) {
+            return new AgentIdentity("unknown", "unknown");
+        }
+        return new AgentIdentity(blankToUnknown(agent.getName()), blankToUnknown(agent.getAgentId()));
+    }
+
+    private AgentIdentity agentIdentity(Agent agent, ActiveRun activeRun) {
+        return activeRun == null ? agentIdentity(agent) : activeRun.agentIdentity();
+    }
+
+    private AgentIdentity subagentIdentity(String source) {
+        String subagentName = source;
+        int lastSlash = source.lastIndexOf('/');
+        if (lastSlash >= 0 && lastSlash + 1 < source.length()) {
+            subagentName = source.substring(lastSlash + 1);
+        }
+        return new AgentIdentity(blankToUnknown(subagentName), blankToUnknown(source));
+    }
+
+    private String blankToUnknown(String value) {
+        return value == null || value.isBlank() ? "unknown" : value;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private String latestMessage(List<Msg> messages) {
@@ -386,13 +475,16 @@ public class AgentRunLogMiddleware implements MiddlewareBase {
     private record ActiveRun(
             String runId,
             long startNanos,
+            AgentIdentity agentIdentity,
             AtomicInteger reasoningStep,
             AtomicBoolean finalResponseLogged) {
 
-        private ActiveRun(String runId, long startNanos) {
-            this(runId, startNanos, new AtomicInteger(0), new AtomicBoolean(false));
+        private ActiveRun(String runId, long startNanos, AgentIdentity agentIdentity) {
+            this(runId, startNanos, agentIdentity, new AtomicInteger(0), new AtomicBoolean(false));
         }
     }
+
+    private record AgentIdentity(String name, String id) {}
 
     private class ModelCallTrace {
 

@@ -42,10 +42,33 @@ class TravelAgentWorkspaceInitializerTest {
                 .exists()
                 .isRegularFile();
         assertThat(properties.getWorkspaceDir().resolve("subagents")).exists().isDirectory();
+        assertThat(properties.getWorkspaceDir().resolve("subagents").resolve("researcher.md"))
+                .exists()
+                .isRegularFile();
+        assertThat(properties.getWorkspaceDir().resolve("subagents").resolve("reviewer.md"))
+                .exists()
+                .isRegularFile();
         assertThat(properties.getWorkspaceDir().resolve("plans")).exists().isDirectory();
         assertThat(Files.readString(properties.getWorkspaceDir().resolve("AGENTS.md")))
                 .contains("中文旅行规划助手")
+                .contains("agent_spawn")
                 .contains("最终回答请用中文 Markdown");
+        assertThat(
+                        Files.readString(
+                                properties
+                                        .getWorkspaceDir()
+                                        .resolve("subagents")
+                                        .resolve("researcher.md")))
+                .contains("description:")
+                .contains("旅行资料研究员");
+        assertThat(
+                        Files.readString(
+                                properties
+                                        .getWorkspaceDir()
+                                        .resolve("subagents")
+                                        .resolve("reviewer.md")))
+                .contains("description:")
+                .contains("旅行方案审稿员");
         assertThat(
                         Files.readString(
                                 properties
